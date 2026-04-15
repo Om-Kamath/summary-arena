@@ -6,10 +6,10 @@ import { useState, useEffect, useCallback } from 'react'
 
 interface Article {
   db_id: string
-  hn_id: number
   title: string
   url: string | null
   content: string
+  source: string
 }
 
 interface Summary {
@@ -25,10 +25,9 @@ interface MetricScores {
 interface Reveal {
   summary_a: string
   summary_b: string
-  winner: string
 }
 
-type Step = 'loading' | 'ready' | 'picked' | 'submitting' | 'reveal' | 'error'
+type RatingStep = 'loading' | 'ready' | 'picked' | 'submitting' | 'reveal'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -41,25 +40,19 @@ const METRICS = [
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function Spinner() {
+function Spinner({ label }: { label: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 py-24 text-slate-400">
-      <svg className="h-8 w-8 animate-spin" viewBox="0 0 24 24" fill="none">
+    <div className="flex items-center gap-2 text-slate-400">
+      <svg className="h-4 w-4 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
       </svg>
-      <span className="text-sm">Fetching article and generating summaries&hellip;</span>
+      <span className="text-sm">{label}</span>
     </div>
   )
 }
 
-function StarRating({
-  value,
-  onChange,
-}: {
-  value: number
-  onChange: (v: number) => void
-}) {
+function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [hover, setHover] = useState(0)
   return (
     <div className="flex gap-0.5">
@@ -85,51 +78,74 @@ function StarRating({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const [step, setStep]         = useState<Step>('loading')
-  const [article, setArticle]   = useState<Article | null>(null)
-  const [summaries, setSummaries] = useState<Summary[]>([])
-  const [winner, setWinner]     = useState<Summary | null>(null)
-  const [scores, setScores]     = useState<MetricScores>({})
-  const [reveal, setReveal]     = useState<Reveal | null>(null)
-  const [error, setError]       = useState<string | null>(null)
+  const [article, setArticle]       = useState<Article | null>(null)
+  const [articleError, setArticleError] = useState<string | null>(null)
+  const [summaries, setSummaries]   = useState<Summary[]>([])
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [ratingStep, setRatingStep] = useState<RatingStep>('loading')
+  const [winner, setWinner]         = useState<Summary | null>(null)
+  const [scores, setScores]         = useState<MetricScores>({})
+  const [reveal, setReveal]         = useState<Reveal | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setStep('loading')
-    setArticle(null)
-    setSummaries([])
-    setWinner(null)
-    setScores({})
-    setReveal(null)
-    setError(null)
+  // ── Load summaries (auto-retries once on failure) ──────────────────────────
+
+  const loadSummaries = useCallback(async (art: Article, attempt = 0) => {
+    setRatingStep('loading')
+    setSummaryError(null)
 
     try {
-      // Step 1 — fetch article
-      const artRes = await fetch('/api/article')
-      if (!artRes.ok) throw new Error('Could not fetch article')
-      const art: Article = await artRes.json()
-      setArticle(art)
-
-      // Step 2 — generate summaries
-      const sumRes = await fetch('/api/summarize', {
+      const res = await fetch('/api/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ article_id: art.db_id, content: art.content }),
       })
-      if (!sumRes.ok) throw new Error('Could not generate summaries')
-      const { summaries: s }: { summaries: Summary[] } = await sumRes.json()
+      if (!res.ok) throw new Error('Could not generate summaries')
+      const { summaries: s }: { summaries: Summary[] } = await res.json()
       setSummaries(s)
-      setStep('ready')
+      setRatingStep('ready')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong')
-      setStep('error')
+      if (attempt === 0) {
+        // Silent retry once before surfacing the error
+        loadSummaries(art, 1)
+        return
+      }
+      setSummaryError(e instanceof Error ? e.message : 'Could not generate summaries')
+      setRatingStep('loading') // keeps article visible, summary section shows error
     }
   }, [])
 
+  // ── Load article ───────────────────────────────────────────────────────────
+
+  const load = useCallback(async () => {
+    setArticle(null)
+    setArticleError(null)
+    setSummaries([])
+    setSummaryError(null)
+    setRatingStep('loading')
+    setWinner(null)
+    setScores({})
+    setReveal(null)
+    setSubmitError(null)
+
+    try {
+      const res = await fetch('/api/article')
+      if (!res.ok) throw new Error('Could not fetch article')
+      const art: Article = await res.json()
+      setArticle(art)
+      await loadSummaries(art)
+    } catch (e) {
+      setArticleError(e instanceof Error ? e.message : 'Could not fetch article')
+    }
+  }, [loadSummaries])
+
   useEffect(() => { load() }, [load])
+
+  // ── Rating handlers ────────────────────────────────────────────────────────
 
   function handlePick(s: Summary) {
     setWinner(s)
-    setStep('picked')
+    setRatingStep('picked')
   }
 
   function setScore(summaryId: string, metric: string, score: number) {
@@ -145,7 +161,8 @@ export default function Home() {
 
   async function handleSubmit() {
     if (!article || !winner) return
-    setStep('submitting')
+    setRatingStep('submitting')
+    setSubmitError(null)
 
     const metric_scores = summaries.flatMap(s =>
       METRICS.map(m => ({
@@ -170,21 +187,33 @@ export default function Home() {
       if (!res.ok) throw new Error('Failed to submit rating')
       const data = await res.json()
       setReveal(data.reveal)
-      setStep('reveal')
+      setRatingStep('reveal')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to submit')
-      setStep('error')
+      setSubmitError(e instanceof Error ? e.message : 'Failed to submit')
+      setRatingStep('picked')
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (step === 'loading') return <Spinner />
+  // Full-page loading (no article yet)
+  if (!article && !articleError) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-24 text-slate-400">
+        <svg className="h-8 w-8 animate-spin" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+        <span className="text-sm">Fetching article&hellip;</span>
+      </div>
+    )
+  }
 
-  if (step === 'error') {
+  // Article fetch failed
+  if (articleError) {
     return (
       <div className="flex flex-col items-center gap-4 py-24 text-center">
-        <p className="text-slate-500">{error}</p>
+        <p className="text-slate-500">{articleError}</p>
         <button
           onClick={load}
           className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
@@ -202,7 +231,7 @@ export default function Home() {
       {article && (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-indigo-500">
-            Hacker News
+            {article.source}
           </p>
           <h1 className="mb-3 text-xl font-semibold leading-snug text-slate-900">
             {article.url ? (
@@ -224,8 +253,27 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── Summary loading / error ── */}
+      {ratingStep === 'loading' && !summaryError && (
+        <div className="py-4">
+          <Spinner label="Generating summaries with two AI models…" />
+        </div>
+      )}
+
+      {summaryError && (
+        <div className="flex items-center justify-between rounded-xl border border-red-100 bg-red-50 px-5 py-4">
+          <p className="text-sm text-red-600">{summaryError}</p>
+          <button
+            onClick={() => article && loadSummaries(article)}
+            className="ml-4 shrink-0 rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ── Step 1: A/B pick ── */}
-      {(step === 'ready' || step === 'picked') && summaries.length === 2 && (
+      {(ratingStep === 'ready' || ratingStep === 'picked') && summaries.length === 2 && (
         <section>
           <h2 className="mb-1 text-lg font-semibold text-slate-900">Step 1 of 2</h2>
           <p className="mb-4 text-sm text-slate-500">Which summary do you prefer overall?</p>
@@ -254,19 +302,21 @@ export default function Home() {
             ))}
           </div>
 
-          {winner && step === 'picked' && (
-            <p className="mt-3 text-right text-sm text-indigo-600 font-medium">
-              ↓ Scroll down to rate on specific metrics
+          {winner && ratingStep === 'picked' && (
+            <p className="mt-3 text-right text-sm font-medium text-indigo-600">
+              ↓ Rate each summary below
             </p>
           )}
         </section>
       )}
 
       {/* ── Step 2: Metric ratings ── */}
-      {(step === 'picked' || step === 'submitting') && winner && (
+      {(ratingStep === 'picked' || ratingStep === 'submitting') && winner && (
         <section>
           <h2 className="mb-1 text-lg font-semibold text-slate-900">Step 2 of 2</h2>
-          <p className="mb-6 text-sm text-slate-500">Rate each summary on these dimensions (1 = poor, 5 = excellent).</p>
+          <p className="mb-6 text-sm text-slate-500">
+            Rate each summary on these dimensions (1 = poor, 5 = excellent).
+          </p>
 
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
             <table className="w-full text-sm">
@@ -287,10 +337,7 @@ export default function Home() {
               </thead>
               <tbody>
                 {METRICS.map((m, i) => (
-                  <tr
-                    key={m.key}
-                    className={i < METRICS.length - 1 ? 'border-b border-slate-100' : ''}
-                  >
+                  <tr key={m.key} className={i < METRICS.length - 1 ? 'border-b border-slate-100' : ''}>
                     <td className="px-5 py-4">
                       <p className="font-medium text-slate-800">{m.label}</p>
                       <p className="text-xs text-slate-400">{m.desc}</p>
@@ -311,23 +358,27 @@ export default function Home() {
             </table>
           </div>
 
+          {submitError && (
+            <p className="mt-3 text-sm text-red-500">{submitError}</p>
+          )}
+
           <div className="mt-5 flex items-center justify-between">
             <p className="text-xs text-slate-400">
-              {allFilled() ? 'All metrics rated. Ready to submit.' : 'Rate all metrics to submit.'}
+              {allFilled() ? 'All metrics rated — ready to submit.' : 'Rate all metrics to submit.'}
             </p>
             <button
               onClick={handleSubmit}
-              disabled={!allFilled() || step === 'submitting'}
+              disabled={!allFilled() || ratingStep === 'submitting'}
               className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {step === 'submitting' ? 'Submitting…' : 'Submit Rating'}
+              {ratingStep === 'submitting' ? 'Submitting…' : 'Submit Rating'}
             </button>
           </div>
         </section>
       )}
 
       {/* ── Reveal ── */}
-      {step === 'reveal' && reveal && (
+      {ratingStep === 'reveal' && reveal && (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-6">
           <h2 className="mb-4 text-lg font-semibold text-emerald-800">Rating submitted!</h2>
 
@@ -341,7 +392,7 @@ export default function Home() {
                   {s.label === 'A' ? reveal.summary_a : reveal.summary_b}
                 </p>
                 {winner?.id === s.id && (
-                  <p className="mt-1 text-xs text-indigo-600 font-medium">Your pick</p>
+                  <p className="mt-1 text-xs font-medium text-indigo-600">Your pick</p>
                 )}
               </div>
             ))}

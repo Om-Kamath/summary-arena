@@ -1,14 +1,11 @@
 /**
- * Run once to create the database schema in Neon:
+ * Run once (or after schema changes) to create the database tables in Neon:
  *   npm run db:setup
  *
  * Requires DATABASE_URL to be set in .env.local
+ * WARNING: drops and recreates all tables — do not run against production data.
  */
 
-import { config } from 'process'
-void config
-
-// Load .env.local manually when running as a script
 import { readFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
 
@@ -26,21 +23,27 @@ import { neon } from '@neondatabase/serverless'
 async function main() {
   const sql = neon(process.env.DATABASE_URL!)
 
+  console.log('Dropping existing tables...')
+  await sql`DROP TABLE IF EXISTS metric_scores CASCADE`
+  await sql`DROP TABLE IF EXISTS ratings CASCADE`
+  await sql`DROP TABLE IF EXISTS summaries CASCADE`
+  await sql`DROP TABLE IF EXISTS articles CASCADE`
+
   console.log('Creating tables...')
 
   await sql`
-    CREATE TABLE IF NOT EXISTS articles (
+    CREATE TABLE articles (
       id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      hn_id      INTEGER UNIQUE NOT NULL,
+      source_url TEXT UNIQUE NOT NULL,
       title      TEXT NOT NULL,
-      url        TEXT,
+      source     TEXT NOT NULL,
       content    TEXT NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `
 
   await sql`
-    CREATE TABLE IF NOT EXISTS summaries (
+    CREATE TABLE summaries (
       id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       article_id UUID NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
       model      TEXT NOT NULL,
@@ -50,7 +53,7 @@ async function main() {
   `
 
   await sql`
-    CREATE TABLE IF NOT EXISTS ratings (
+    CREATE TABLE ratings (
       id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       article_id   UUID NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
       summary_a_id UUID NOT NULL REFERENCES summaries(id) ON DELETE CASCADE,
@@ -61,7 +64,7 @@ async function main() {
   `
 
   await sql`
-    CREATE TABLE IF NOT EXISTS metric_scores (
+    CREATE TABLE metric_scores (
       id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       rating_id  UUID NOT NULL REFERENCES ratings(id) ON DELETE CASCADE,
       summary_id UUID NOT NULL REFERENCES summaries(id) ON DELETE CASCADE,

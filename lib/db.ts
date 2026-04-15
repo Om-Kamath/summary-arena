@@ -5,15 +5,15 @@ export const sql = neon(process.env.DATABASE_URL!)
 // ── Articles ──────────────────────────────────────────────────────────────────
 
 export async function upsertArticle(data: {
-  hn_id: number
+  source_url: string
   title: string
-  url?: string
+  source: string
   content: string
 }): Promise<string> {
   const rows = await sql`
-    INSERT INTO articles (hn_id, title, url, content)
-    VALUES (${data.hn_id}, ${data.title}, ${data.url ?? null}, ${data.content})
-    ON CONFLICT (hn_id) DO UPDATE
+    INSERT INTO articles (source_url, title, source, content)
+    VALUES (${data.source_url}, ${data.title}, ${data.source}, ${data.content})
+    ON CONFLICT (source_url) DO UPDATE
       SET content = EXCLUDED.content,
           title   = EXCLUDED.title
     RETURNING id

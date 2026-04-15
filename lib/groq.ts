@@ -3,10 +3,10 @@ import Groq from 'groq-sdk'
 export const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 export const MODELS: { id: string; name: string }[] = [
-  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B' },
-  { id: 'llama-3.1-8b-instant',    name: 'Llama 3.1 8B'  },
-  { id: 'gemma2-9b-it',            name: 'Gemma 2 9B'    },
-  { id: 'mixtral-8x7b-32768',      name: 'Mixtral 8x7B'  },
+  { id: 'llama-3.3-70b-versatile',                    name: 'Llama 3.3 70B'       },
+  { id: 'llama-3.1-8b-instant',                       name: 'Llama 3.1 8B'        },
+  { id: 'meta-llama/llama-4-scout-17b-16e-instruct',  name: 'Llama 4 Scout 17B'   },
+  { id: 'moonshotai/kimi-k2-instruct',                name: 'Kimi K2'             },
 ]
 
 /** Pick two distinct models at random for a session. */
