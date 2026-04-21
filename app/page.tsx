@@ -1,6 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import {
+  EDUCATION_OPTIONS,
+  NEWS_FREQUENCY_OPTIONS,
+  STUDY_FIELD_OPTIONS,
+} from '@/lib/rater-demographics'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +42,9 @@ const METRICS = [
   { key: 'completeness', label: 'Completeness', desc: 'Does it cover the key points?'             },
   { key: 'conciseness',  label: 'Conciseness',  desc: 'Is it appropriately brief?'                },
 ]
+
+const selectClass =
+  'mt-1 w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm'
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -88,6 +96,36 @@ export default function Home() {
   const [reveal, setReveal]         = useState<Reveal | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  const [difficultyLlmReady, setDifficultyLlmReady] = useState(false)
+  const [difficultyLlmAvg, setDifficultyLlmAvg]     = useState<number | null>(null)
+  const [difficultyUserAgrees, setDifficultyUserAgrees] = useState<boolean | null>(null)
+  const [difficultyUserScore, setDifficultyUserScore]   = useState<number | null>(null)
+
+  const [userEducation, setUserEducation]       = useState('')
+  const [userStudyField, setUserStudyField]     = useState('')
+  const [userNewsFrequency, setUserNewsFrequency] = useState('')
+
+  const runDifficulty = useCallback(async (dbId: string) => {
+    setDifficultyLlmReady(false)
+    setDifficultyLlmAvg(null)
+    setDifficultyUserAgrees(null)
+    setDifficultyUserScore(null)
+    try {
+      const res = await fetch('/api/difficulty', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ article_id: dbId }),
+      })
+      if (!res.ok) throw new Error('difficulty failed')
+      const data = (await res.json()) as { avg?: number }
+      setDifficultyLlmAvg(typeof data.avg === 'number' ? data.avg : null)
+    } catch {
+      setDifficultyLlmAvg(null)
+    } finally {
+      setDifficultyLlmReady(true)
+    }
+  }, [])
+
   // ── Load summaries (auto-retries once on failure) ──────────────────────────
 
   const loadSummaries = useCallback(async (art: Article, attempt = 0) => {
@@ -104,6 +142,20 @@ export default function Home() {
       const { summaries: s }: { summaries: Summary[] } = await res.json()
       setSummaries(s)
       setRatingStep('ready')
+
+      const sa = s.find(x => x.label === 'A')
+      const sb = s.find(x => x.label === 'B')
+      if (sa && sb) {
+        void fetch('/api/llm_evaluate_response', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            article_id: art.db_id,
+            summary_a_id: sa.id,
+            summary_b_id: sb.id,
+          }),
+        }).catch(() => {})
+      }
     } catch (e) {
       if (attempt === 0) {
         // Silent retry once before surfacing the error
@@ -127,17 +179,24 @@ export default function Home() {
     setScores({})
     setReveal(null)
     setSubmitError(null)
+    setDifficultyLlmReady(false)
+    setDifficultyLlmAvg(null)
+    setDifficultyUserAgrees(null)
+    setDifficultyUserScore(null)
+    setUserEducation('')
+    setUserStudyField('')
+    setUserNewsFrequency('')
 
     try {
       const res = await fetch('/api/article')
       if (!res.ok) throw new Error('Could not fetch article')
       const art: Article = await res.json()
       setArticle(art)
-      await loadSummaries(art)
+      await Promise.all([runDifficulty(art.db_id), loadSummaries(art)])
     } catch (e) {
       setArticleError(e instanceof Error ? e.message : 'Could not fetch article')
     }
-  }, [loadSummaries])
+  }, [loadSummaries, runDifficulty])
 
   useEffect(() => { load() }, [load])
 
@@ -159,6 +218,20 @@ export default function Home() {
     return summaries.every(s => METRICS.every(m => scores[s.id]?.[m.key] !== undefined))
   }
 
+  function difficultyFeedbackOk() {
+    if (!difficultyLlmReady || typeof difficultyLlmAvg !== 'number') return true
+    if (difficultyUserAgrees === null) return false
+    if (difficultyUserAgrees === false) {
+      const u = difficultyUserScore
+      return typeof u === 'number' && Number.isInteger(u) && u >= 1 && u <= 10
+    }
+    return true
+  }
+
+  function userDemographicsOk() {
+    return userEducation !== '' && userStudyField !== '' && userNewsFrequency !== ''
+  }
+
   async function handleSubmit() {
     if (!article || !winner) return
     setRatingStep('submitting')
@@ -172,6 +245,14 @@ export default function Home() {
       }))
     )
 
+    const difficultyPayload =
+      difficultyLlmReady && typeof difficultyLlmAvg === 'number' && difficultyUserAgrees !== null
+        ? {
+            difficulty_user_agrees: difficultyUserAgrees,
+            difficulty_user_score: difficultyUserAgrees ? null : difficultyUserScore,
+          }
+        : {}
+
     try {
       const res = await fetch('/api/ratings', {
         method: 'POST',
@@ -182,6 +263,10 @@ export default function Home() {
           summary_b_id: summaries.find(s => s.label === 'B')!.id,
           winner_id: winner.id,
           metric_scores,
+          user_education: userEducation,
+          user_study_field: userStudyField,
+          user_news_frequency: userNewsFrequency,
+          ...difficultyPayload,
         }),
       })
       if (!res.ok) throw new Error('Failed to submit rating')
@@ -247,9 +332,87 @@ export default function Home() {
               article.title
             )}
           </h1>
-          <p className="line-clamp-4 text-sm leading-relaxed text-slate-500">
+          <p className="text-sm leading-relaxed text-slate-600">
             {article.content}
           </p>
+        </div>
+      )}
+
+      {/* ── Summarization difficulty (LLM + user agreement) ── */}
+      {article && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Summarization difficulty
+          </h2>
+          {!difficultyLlmReady && (
+            <Spinner label="Three AI models are rating how hard this article is to summarize…" />
+          )}
+          {difficultyLlmReady && typeof difficultyLlmAvg !== 'number' && (
+            <p className="text-sm text-slate-600">
+              Model consensus (1–10): <span className="font-semibold text-slate-900">NA</span>
+            </p>
+          )}
+          {difficultyLlmReady && typeof difficultyLlmAvg === 'number' && (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Average model rating (1 = very easy, 10 = very hard):{' '}
+                <span className="font-semibold text-slate-900">{difficultyLlmAvg}</span>
+              </p>
+              <div>
+                <p className="mb-2 text-sm font-medium text-slate-800">
+                  Do you agree with this difficulty rating?
+                </p>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name="difficulty-agree"
+                      checked={difficultyUserAgrees === true}
+                      onChange={() => {
+                        setDifficultyUserAgrees(true)
+                        setDifficultyUserScore(null)
+                      }}
+                      className="text-indigo-600"
+                    />
+                    <span>I agree</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name="difficulty-agree"
+                      checked={difficultyUserAgrees === false}
+                      onChange={() => setDifficultyUserAgrees(false)}
+                      className="text-indigo-600"
+                    />
+                    <span>I disagree</span>
+                  </label>
+                </div>
+              </div>
+              {difficultyUserAgrees === false && (
+                <div>
+                  <label htmlFor="difficulty-user-score" className="mb-1 block text-sm font-medium text-slate-800">
+                    What would you rate this article (1–10)?
+                  </label>
+                  <select
+                    id="difficulty-user-score"
+                    value={difficultyUserScore ?? ''}
+                    onChange={e => {
+                      const v = e.target.value
+                      setDifficultyUserScore(v === '' ? null : Number(v))
+                    }}
+                    className={selectClass}
+                  >
+                    <option value="">Select…</option>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -270,6 +433,75 @@ export default function Home() {
             Retry
           </button>
         </div>
+      )}
+
+      {/* ── About you (stored with your rating) ── */}
+      {(ratingStep === 'ready' || ratingStep === 'picked' || ratingStep === 'submitting') &&
+        summaries.length === 2 && (
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            About you
+          </h2>
+          <p className="mb-5 text-sm text-slate-500">
+            These answers are saved with your submission (no account required).
+          </p>
+          <div className="grid gap-5 sm:grid-cols-1 md:grid-cols-3">
+            <div>
+              <label htmlFor="user-education" className="block text-sm font-medium text-slate-800">
+                Highest educational qualification
+              </label>
+              <select
+                id="user-education"
+                value={userEducation}
+                onChange={e => setUserEducation(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">Select…</option>
+                {EDUCATION_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="user-study" className="block text-sm font-medium text-slate-800">
+                Main field you study or have studied
+              </label>
+              <select
+                id="user-study"
+                value={userStudyField}
+                onChange={e => setUserStudyField(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">Select…</option>
+                {STUDY_FIELD_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="user-news" className="block text-sm font-medium text-slate-800">
+                How often do you read news articles?
+              </label>
+              <select
+                id="user-news"
+                value={userNewsFrequency}
+                onChange={e => setUserNewsFrequency(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">Select…</option>
+                {NEWS_FREQUENCY_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* ── Step 1: A/B pick ── */}
@@ -364,11 +596,22 @@ export default function Home() {
 
           <div className="mt-5 flex items-center justify-between">
             <p className="text-xs text-slate-400">
-              {allFilled() ? 'All metrics rated — ready to submit.' : 'Rate all metrics to submit.'}
+              {!allFilled() && 'Rate all metrics to submit.'}
+              {allFilled() && !difficultyFeedbackOk() && 'Answer the difficulty question above to submit.'}
+              {allFilled() &&
+                difficultyFeedbackOk() &&
+                !userDemographicsOk() &&
+                'Complete the “About you” section above to submit.'}
+              {allFilled() && difficultyFeedbackOk() && userDemographicsOk() && 'Ready to submit.'}
             </p>
             <button
               onClick={handleSubmit}
-              disabled={!allFilled() || ratingStep === 'submitting'}
+              disabled={
+                !allFilled() ||
+                !difficultyFeedbackOk() ||
+                !userDemographicsOk() ||
+                ratingStep === 'submitting'
+              }
               className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {ratingStep === 'submitting' ? 'Submitting…' : 'Submit Rating'}

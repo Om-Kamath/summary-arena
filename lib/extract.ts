@@ -76,3 +76,55 @@ export function cleanHnText(text: string): string {
   const $ = cheerio.load(text)
   return clean($.text()).slice(0, MAX_CONTENT_LENGTH)
 }
+
+/** Last index of `.` `!` `?` that closes a sentence (before space, newline, or end). */
+function lastSentenceClosingIndex(s: string): number {
+  let best = -1
+  const re = /[.!?](?=\s|$|["'\u201c\u201d\u2019]\s|["'\u201c\u201d\u2019]$)/g
+  for (const m of s.matchAll(re)) {
+    const i = m.index
+    if (i === undefined) continue
+    if (s[i] === '.' && i > 0 && /\d/.test(s[i - 1]) && /\d/.test(s[i + 1] ?? '')) continue
+    best = i
+  }
+  return best
+}
+
+/**
+ * At most `maxWords` words, cut back to the last full sentence that still fits.
+ * If no boundary in the first `maxWords` words, tries fewer words; rare fallback
+ * is the raw word cap (one very long sentence).
+ */
+export function truncateToMaxWordsEndingSentence(text: string, maxWords: number): string {
+  const normalized = clean(text)
+  const words = normalized.split(/\s+/).filter(w => w.length > 0)
+  if (words.length <= maxWords) return normalized
+
+  const minWords = 50
+
+  for (let n = maxWords; n >= minWords; n--) {
+    const chunk = words.slice(0, n).join(' ')
+    let last = lastSentenceClosingIndex(chunk)
+    if (last < 0) {
+      for (const sep of ['. ', '! ', '? ', '.\n', '!\n', '?\n']) {
+        let from = 0
+        while (true) {
+          const j = chunk.indexOf(sep, from)
+          if (j === -1) break
+          last = j
+          from = j + sep.length
+        }
+      }
+    }
+    if (last >= 0) {
+      const out = chunk.slice(0, last + 1).trim()
+      const outWords = out.split(/\s+/).filter(w => w.length > 0).length
+      if (out.length >= 60 && outWords >= 8) return out
+    }
+  }
+
+  const tail = words.slice(0, maxWords).join(' ')
+  const last = lastSentenceClosingIndex(tail)
+  if (last >= 0) return tail.slice(0, last + 1).trim()
+  return tail
+}
