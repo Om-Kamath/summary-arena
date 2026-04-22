@@ -17,6 +17,21 @@ const parser = new Parser({
   timeout: 8_000,
 })
 
+interface CachedFeed {
+  items: Parser.Item[]
+  fetchedAt: number
+}
+const feedCache = new Map<string, CachedFeed>()
+const FEED_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+async function getParsedFeed(url: string): Promise<Parser.Item[]> {
+  const cached = feedCache.get(url)
+  if (cached && Date.now() - cached.fetchedAt < FEED_TTL_MS) return cached.items
+  const parsed = await parser.parseURL(url)
+  feedCache.set(url, { items: parsed.items, fetchedAt: Date.now() })
+  return parsed.items
+}
+
 export const FEEDS = [
   { name: 'Reuters Politics', url: 'https://feeds.reuters.com/Reuters/PoliticsNews' },
   { name: 'NPR Politics', url: 'https://feeds.npr.org/1014/rss.xml' },
@@ -47,8 +62,7 @@ export async function fetchRandomPoliticsStory(): Promise<NewsStory> {
 
   for (const feed of shuffledFeeds) {
     try {
-      const parsed = await parser.parseURL(feed.url)
-      const items = parsed.items
+      const items = (await getParsedFeed(feed.url))
         .filter(i => i.link && i.title)
         .sort(() => Math.random() - 0.5)
         .slice(0, 10) // sample up to 10 per feed

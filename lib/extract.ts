@@ -42,11 +42,21 @@ function extractFromHtml(html: string): string {
   return clean($('body').text()).slice(0, MAX_CONTENT_LENGTH)
 }
 
+interface CachedContent {
+  content: string | null
+  fetchedAt: number
+}
+const contentCache = new Map<string, CachedContent>()
+const CONTENT_TTL_MS = 60 * 60 * 1000 // 1 hour
+
 /**
  * Fetch an article URL and return its text content.
  * Returns null if the fetch fails or content is too short.
  */
 export async function fetchArticleContent(url: string): Promise<string | null> {
+  const cached = contentCache.get(url)
+  if (cached && Date.now() - cached.fetchedAt < CONTENT_TTL_MS) return cached.content
+
   try {
     const res = await fetch(url, {
       headers: {
@@ -65,8 +75,11 @@ export async function fetchArticleContent(url: string): Promise<string | null> {
     const html = await res.text()
     const text = extractFromHtml(html)
 
-    return text.length >= MIN_CONTENT_LENGTH ? text : null
+    const content = text.length >= MIN_CONTENT_LENGTH ? text : null
+    contentCache.set(url, { content, fetchedAt: Date.now() })
+    return content
   } catch {
+    contentCache.set(url, { content: null, fetchedAt: Date.now() })
     return null
   }
 }
