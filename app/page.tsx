@@ -215,7 +215,7 @@ export default function Home() {
   }
 
   function allFilled() {
-    return summaries.every(s => METRICS.every(m => scores[s.id]?.[m.key] !== undefined))
+    return !!winner && METRICS.every(m => scores[winner.id]?.[m.key] !== undefined)
   }
 
   function difficultyFeedbackOk() {
@@ -237,13 +237,11 @@ export default function Home() {
     setRatingStep('submitting')
     setSubmitError(null)
 
-    const metric_scores = summaries.flatMap(s =>
-      METRICS.map(m => ({
-        summary_id: s.id,
-        metric: m.key,
-        score: scores[s.id]?.[m.key] ?? 3,
-      }))
-    )
+    const metric_scores = METRICS.map(m => ({
+      summary_id: winner.id,
+      metric: m.key,
+      score: scores[winner.id]?.[m.key] ?? 3,
+    }))
 
     const difficultyPayload =
       difficultyLlmReady && typeof difficultyLlmAvg === 'number' && difficultyUserAgrees !== null
@@ -536,7 +534,7 @@ export default function Home() {
 
           {winner && ratingStep === 'picked' && (
             <p className="mt-3 text-right text-sm font-medium text-indigo-600">
-              ↓ Rate each summary below
+              ↓ Rate your preferred summary below
             </p>
           )}
         </section>
@@ -546,48 +544,23 @@ export default function Home() {
       {(ratingStep === 'picked' || ratingStep === 'submitting') && winner && (
         <section>
           <h2 className="mb-1 text-lg font-semibold text-slate-900">Step 2 of 2</h2>
-          <p className="mb-6 text-sm text-slate-500">
-            Rate each summary on these dimensions (1 = poor, 5 = excellent).
+          <p className="mb-4 text-sm text-slate-500">
+            Rate your preferred summary on these dimensions (1 = poor, 5 = excellent).
           </p>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-5 py-3 text-left font-medium text-slate-600">Metric</th>
-                  {summaries.map(s => (
-                    <th key={s.id} className="px-5 py-3 text-center font-medium text-slate-600">
-                      Summary {s.label}
-                      {winner.id === s.id && (
-                        <span className="ml-1.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-600">
-                          preferred
-                        </span>
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {METRICS.map((m, i) => (
-                  <tr key={m.key} className={i < METRICS.length - 1 ? 'border-b border-slate-100' : ''}>
-                    <td className="px-5 py-4">
-                      <p className="font-medium text-slate-800">{m.label}</p>
-                      <p className="text-xs text-slate-400">{m.desc}</p>
-                    </td>
-                    {summaries.map(s => (
-                      <td key={s.id} className="px-5 py-4 text-center">
-                        <div className="flex justify-center">
-                          <StarRating
-                            value={scores[s.id]?.[m.key] ?? 0}
-                            onChange={v => setScore(s.id, m.key, v)}
-                          />
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-sm">
+            {METRICS.map(m => (
+              <div key={m.key} className="flex items-center justify-between px-5 py-4">
+                <div>
+                  <p className="font-medium text-slate-800">{m.label}</p>
+                  <p className="text-xs text-slate-400">{m.desc}</p>
+                </div>
+                <StarRating
+                  value={scores[winner.id]?.[m.key] ?? 0}
+                  onChange={v => setScore(winner.id, m.key, v)}
+                />
+              </div>
+            ))}
           </div>
 
           {submitError && (
