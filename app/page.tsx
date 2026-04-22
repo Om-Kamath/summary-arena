@@ -93,6 +93,7 @@ export default function Home() {
   const [ratingStep, setRatingStep] = useState<RatingStep>('loading')
   const [winner, setWinner]         = useState<Summary | null>(null)
   const [scores, setScores]         = useState<MetricScores>({})
+  const [qualitativeFeedback, setQualitativeFeedback] = useState('')
   const [reveal, setReveal]         = useState<Reveal | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -177,6 +178,7 @@ export default function Home() {
     setRatingStep('loading')
     setWinner(null)
     setScores({})
+    setQualitativeFeedback('')
     setReveal(null)
     setSubmitError(null)
     setDifficultyLlmReady(false)
@@ -264,6 +266,7 @@ export default function Home() {
           user_education: userEducation,
           user_study_field: userStudyField,
           user_news_frequency: userNewsFrequency,
+          qualitative_feedback: qualitativeFeedback,
           ...difficultyPayload,
         }),
       })
@@ -561,6 +564,27 @@ export default function Home() {
                 />
               </div>
             ))}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <label htmlFor="qualitative-feedback" className="block text-sm font-semibold text-slate-900">
+              Feedback <span className="font-normal text-slate-400">(optional)</span>
+            </label>
+            <p className="mt-1 text-sm text-slate-500">
+              What made you prefer Summary {winner.label}, or what stood out about either summary?
+            </p>
+            <textarea
+              id="qualitative-feedback"
+              value={qualitativeFeedback}
+              onChange={e => setQualitativeFeedback(e.target.value)}
+              maxLength={2000}
+              rows={4}
+              className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-900 shadow-sm outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              placeholder="Share what you noticed..."
+            />
+            <p className="mt-2 text-right text-xs text-slate-400">
+              {qualitativeFeedback.length}/2000
+            </p>
           </div>
 
           {submitError && (

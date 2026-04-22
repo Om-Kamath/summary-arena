@@ -47,6 +47,14 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
+function stripReasoning(raw: string): string {
+  let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  text = text.split(/<\/think>/i).at(-1)?.trim() ?? text
+  text = text.split(/<think>/i)[0]?.trim() ?? text
+  text = text.replace(/<\/?think>/gi, '').trim()
+  return text
+}
+
 const DIFFICULTY_PROMPT = (article: string) => `\
 You rate how difficult it would be for a skilled human to produce an accurate, neutral 3–4 sentence summary of the news article below.
 Consider: information density, ambiguity, jargon, length, and cross-references.
@@ -164,6 +172,7 @@ const PROMPT = (content: string) => `\
 You are a precise news article summarizer. Write a concise, accurate summary of the article below in 3–4 sentences.
 
 Rules:
+- Return only the final summary. Do not include reasoning, analysis, drafts, or <think> tags.
 - Include only facts present in the article — no external knowledge
 - Maintain a neutral, objective tone
 - Cover the main event, key people/entities involved, and why it matters
@@ -174,7 +183,7 @@ ${ARTICLE_SNIPPET(content)}
 
 Summary:`
 
-export async function generateSummary(content: string, model: string): Promise<string> {
+async function requestSummary(content: string, model: string): Promise<string> {
   const res = await groq.chat.completions.create({
     model,
     messages: [{ role: 'user', content: PROMPT(content) }],
@@ -182,4 +191,15 @@ export async function generateSummary(content: string, model: string): Promise<s
     temperature: 0.3,
   })
   return res.choices[0].message.content?.trim() ?? ''
+}
+
+export async function generateSummary(content: string, model: string): Promise<string> {
+  const raw = await requestSummary(content, model)
+  const cleaned = stripReasoning(raw)
+  if (cleaned && !/<\/?think>/i.test(cleaned)) return cleaned
+
+  const retryRaw = await requestSummary(content, model)
+  const retryCleaned = stripReasoning(retryRaw)
+  if (retryCleaned && !/<\/?think>/i.test(retryCleaned)) return retryCleaned
+  throw new Error('Model returned hidden reasoning instead of a summary')
 }

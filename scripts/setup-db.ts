@@ -73,7 +73,8 @@ async function main() {
       created_at   TIMESTAMPTZ DEFAULT NOW(),
       user_education       TEXT,
       user_study_field     TEXT,
-      user_news_frequency  TEXT
+      user_news_frequency  TEXT,
+      qualitative_feedback TEXT
     )
   `
 
