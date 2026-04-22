@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       user_education,
       user_study_field,
       user_news_frequency,
+      qualitative_feedback,
     } = body
 
     if (!article_id || !summary_a_id || !summary_b_id || !winner_id || !metric_scores) {
@@ -42,6 +43,18 @@ export async function POST(req: NextRequest) {
     }
     if (!isValidNewsFrequency(user_news_frequency)) {
       return NextResponse.json({ error: 'Invalid or missing user_news_frequency' }, { status: 400 })
+    }
+
+    let qualitativeFeedback: string | null = null
+    if (qualitative_feedback !== undefined && qualitative_feedback !== null) {
+      if (typeof qualitative_feedback !== 'string') {
+        return NextResponse.json({ error: 'qualitative_feedback must be a string' }, { status: 400 })
+      }
+      qualitativeFeedback = qualitative_feedback.trim()
+      if (qualitativeFeedback.length > 2000) {
+        return NextResponse.json({ error: 'qualitative_feedback must be 2000 characters or fewer' }, { status: 400 })
+      }
+      if (qualitativeFeedback.length === 0) qualitativeFeedback = null
     }
 
     if (difficulty_user_agrees !== undefined && difficulty_user_agrees !== null) {
@@ -73,6 +86,7 @@ export async function POST(req: NextRequest) {
       user_education,
       user_study_field,
       user_news_frequency,
+      qualitative_feedback: qualitativeFeedback,
     })
 
     // Persist metric scores

@@ -108,6 +108,7 @@ export async function createRating(data: {
   user_education: string
   user_study_field: string
   user_news_frequency: string
+  qualitative_feedback: string | null
 }): Promise<string> {
   const rows = await sql`
     INSERT INTO ratings (
@@ -117,7 +118,8 @@ export async function createRating(data: {
       winner_id,
       user_education,
       user_study_field,
-      user_news_frequency
+      user_news_frequency,
+      qualitative_feedback
     )
     VALUES (
       ${data.article_id},
@@ -126,7 +128,8 @@ export async function createRating(data: {
       ${data.winner_id},
       ${data.user_education},
       ${data.user_study_field},
-      ${data.user_news_frequency}
+      ${data.user_news_frequency},
+      ${data.qualitative_feedback}
     )
     RETURNING id
   `
