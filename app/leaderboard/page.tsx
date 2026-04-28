@@ -13,7 +13,7 @@ export default async function LeaderboardPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Leaderboard</h1>
+        <h1 className="text-2xl font-bold text-[#3B82F6]">Leaderboard</h1>
         <p className="mt-1 text-sm text-slate-500">
           Aggregate scores across all rated articles. Ratings are collected blind — users don&apos;t
           know which model generated which summary until after submitting.
@@ -49,7 +49,7 @@ export default async function LeaderboardPage() {
                   className={i < rows.length - 1 ? 'border-b border-slate-100' : ''}
                 >
                   <td className="px-5 py-4 text-slate-400">{i + 1}</td>
-                  <td className="px-5 py-4 font-semibold text-slate-900">{row.model}</td>
+                  <td className="px-5 py-4 font-bold text-[#3B82F6]">{row.model}</td>
                   <td className="px-5 py-4 text-center">
                     <span
                       className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${

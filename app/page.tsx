@@ -546,7 +546,7 @@ export default function Home() {
       {/* ── Step 2: Metric ratings ── */}
       {(ratingStep === 'picked' || ratingStep === 'submitting') && winner && (
         <section>
-          <h2 className="mb-1 text-lg font-semibold text-slate-900">Step 2 of 2</h2>
+          <h2 className="mb-1 text-lg font-bold text-[#3B82F6]">Step 2 of 2</h2>
           <p className="mb-4 text-sm text-slate-500">
             Rate your preferred summary on these dimensions (1 = poor, 5 = excellent).
           </p>
@@ -609,7 +609,7 @@ export default function Home() {
                 !userDemographicsOk() ||
                 ratingStep === 'submitting'
               }
-              className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-[#3B82F6] px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-[#2860bd] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {ratingStep === 'submitting' ? 'Submitting…' : 'Submit Rating'}
             </button>
