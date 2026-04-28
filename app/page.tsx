@@ -325,7 +325,7 @@ export default function Home() {
                 href={article.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-indigo-600 transition-colors"
+                className="hover:font-bold text-[#3B82F6] transition-colors"
               >
                 {article.title} ↗
               </a>
@@ -342,7 +342,7 @@ export default function Home() {
       {/* ── Summarization difficulty (LLM + user agreement) ── */}
       {article && (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          <h2 className="mb-2 text-sm font-bold text-[#3B82F6] uppercase tracking-wide">
             Summarization difficulty
           </h2>
           {!difficultyLlmReady && (
@@ -440,7 +440,7 @@ export default function Home() {
       {(ratingStep === 'ready' || ratingStep === 'picked' || ratingStep === 'submitting') &&
         summaries.length === 2 && (
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          <h2 className="mb-1 text-sm font-bold text-[#3B82F6] uppercase tracking-wide">
             About you
           </h2>
           <p className="mb-5 text-sm text-slate-500">
@@ -508,7 +508,7 @@ export default function Home() {
       {/* ── Step 1: A/B pick ── */}
       {(ratingStep === 'ready' || ratingStep === 'picked') && summaries.length === 2 && (
         <section>
-          <h2 className="mb-1 text-lg font-semibold text-slate-900">Step 1 of 2</h2>
+          <h2 className="mb-1 text-lg font-bold text-[#3B82F6]">Step 1 of 2</h2>
           <p className="mb-4 text-sm text-slate-500">Which summary do you prefer overall?</p>
           <div className="grid gap-4 sm:grid-cols-2">
             {summaries.map(s => (
@@ -523,7 +523,7 @@ export default function Home() {
                 }`}
               >
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="rounded-full bg-slate-100 px-3 py-0.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  <span className="rounded-full bg-slate-100 px-3 py-0.5 text-xs font-bold text-[#3B82F6] uppercase tracking-wide ">
                     Summary {s.label}
                   </span>
                   {winner?.id === s.id && (
@@ -536,7 +536,7 @@ export default function Home() {
           </div>
 
           {winner && ratingStep === 'picked' && (
-            <p className="mt-3 text-right text-sm font-medium text-indigo-600">
+            <p className="mt-3 text-right text-sm font-bold text-[#3B82F6]">
               ↓ Rate your preferred summary below
             </p>
           )}
