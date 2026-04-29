@@ -7,6 +7,10 @@ import {
   STUDY_FIELD_OPTIONS,
 } from '@/lib/rater-demographics'
 
+import { Epilogue } from 'next/font/google'
+const epilogue = Epilogue({ subsets: ['latin'] })
+
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Article {
@@ -72,7 +76,7 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
           onMouseEnter={() => setHover(star)}
           onMouseLeave={() => setHover(0)}
           className={`text-2xl leading-none transition-colors ${
-            star <= (hover || value) ? 'text-amber-400' : 'text-slate-200'
+            star <= (hover || value) ? hover ? 'text-amber-300' : 'text-amber-500' : 'text-slate-200'
           }`}
           aria-label={`${star} star`}
         >
@@ -333,9 +337,7 @@ export default function Home() {
               article.title
             )}
           </h1>
-          <p className="text-sm leading-relaxed text-slate-600">
-            {article.content}
-          </p>
+          <p className={`${epilogue.className} text-sm leading-relaxed text-slate-700`}>{article.content}</p>
         </div>
       )}
 
@@ -349,19 +351,19 @@ export default function Home() {
             <Spinner label="Three AI models are rating how hard this article is to summarize…" />
           )}
           {difficultyLlmReady && typeof difficultyLlmAvg !== 'number' && (
-            <p className="text-sm text-slate-600">
-              Model consensus (1–10): <span className="font-semibold text-slate-900">NA</span>
+            <p className={`${epilogue.className} text-sm leading-relaxed text-slate-700`}>{
+              "Model consensus (1–10):"} <span className="font-semibold text-slate-900">NA</span>
             </p>
           )}
           {difficultyLlmReady && typeof difficultyLlmAvg === 'number' && (
             <div className="space-y-4">
-              <p className="text-sm text-slate-600">
-                Average model rating (1 = very easy, 10 = very hard):{' '}
+              <p className={`${epilogue.className} text-sm leading-relaxed text-slate-700`}>{
+                "Average model rating (1 = very easy, 10 = very hard):"}{' '}
                 <span className="font-semibold text-slate-900">{difficultyLlmAvg}</span>
               </p>
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-800">
-                  Do you agree with this difficulty rating?
+                <p className={`${epilogue.className} text-sm leading-relaxed text-slate-700`}>{
+                  "Do you agree with this difficulty rating?"}
                 </p>
                 <div className="flex flex-wrap gap-4 text-sm">
                   <label className="flex cursor-pointer items-center gap-2">
@@ -516,21 +518,30 @@ export default function Home() {
                 key={s.id}
                 type="button"
                 onClick={() => handlePick(s)}
-                className={`rounded-xl border-2 bg-white p-5 text-left shadow-sm transition-all ${
+                className={`group rounded-xl border-2 bg-white p-5 text-left shadow-sm transition-all ${
                   winner?.id === s.id
-                    ? 'border-indigo-500 ring-2 ring-indigo-100'
-                    : 'border-slate-200 hover:border-indigo-300'
+                    ? 'border-indigo-700 bg-indigo-100 ring-2 ring-indigo-300 hover:bg-indigo-200 hover:ring-indigo-400'
+                    : 'border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 hover:shadow-md'
                 }`}
               >
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="rounded-full bg-slate-100 px-3 py-0.5 text-xs font-bold text-[#3B82F6] uppercase tracking-wide ">
+                  <span className={`rounded-full bg-slate-100 px-3 py-0.5 text-xs font-bold text-[#3B82F6] uppercase tracking-wide transition-colors ${
+                      winner?.id === s.id
+                        ? 'bg-indigo-300 text-indigo-950'
+                        : 'bg-slate-100 text-[#3B82F6] group-hover:bg-indigo-200 group-hover:text-indigo-900'
+                    }`}
+                  >
                     Summary {s.label}
                   </span>
-                  {winner?.id === s.id && (
-                    <span className="text-xs font-medium text-indigo-600">Selected</span>
-                  )}
+                  <span
+                    className={`text-xs font-medium ${
+                      winner?.id === s.id ? 'text-indigo-600' : 'invisible'
+                    }`}
+                  >
+                    Selected
+                  </span>
                 </div>
-                <p className="text-sm leading-relaxed text-slate-700">{s.content}</p>
+                <p className={`${epilogue.className} text-sm leading-relaxed text-slate-700`}>{s.content}</p>
               </button>
             ))}
           </div>

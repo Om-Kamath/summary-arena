@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { Epilogue } from 'next/font/google'
+const epilogue = Epilogue({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Summary Arena',
