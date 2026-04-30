@@ -172,7 +172,7 @@ export async function getLeaderboard(): Promise<LeaderboardRow[]> {
       JOIN ratings r ON (r.summary_a_id = s.id OR r.summary_b_id = s.id)
       WHERE EXISTS (
         SELECT 1 FROM metric_scores ms0
-        WHERE ms0.rating_id = r.id AND ms0.summary_id = s.id
+        WHERE ms0.rating_id = r.id
       )
     ),
     model_agg AS (
