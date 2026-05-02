@@ -147,6 +147,146 @@ export async function createMetricScores(
   }
 }
 
+// ── Analysis ──────────────────────────────────────────────────────────────────
+
+/** Articles where both LLM and human difficulty scores exist. */
+export async function getDifficultyAlignment(): Promise<
+  { llm_score: number; human_score: number }[]
+> {
+  const rows = await sql`
+    SELECT
+      difficulty_llm_avg::float                                      AS llm_score,
+      CASE
+        WHEN difficulty_user_agrees = true  THEN difficulty_llm_avg::float
+        WHEN difficulty_user_agrees = false THEN difficulty_user_score::float
+      END                                                            AS human_score
+    FROM articles
+    WHERE difficulty_llm_avg IS NOT NULL
+      AND difficulty_user_agrees IS NOT NULL
+  `
+  return rows as { llm_score: number; human_score: number }[]
+}
+
+/** Avg metric scores per summariser model — LLM judges vs human raters. */
+export async function getModelMetricScores(): Promise<{
+  llm:   { model: string; metric: string; avg_score: number }[]
+  human: { model: string; metric: string; avg_score: number }[]
+}> {
+  const [llmRows, humanRows] = await Promise.all([
+    sql`
+      SELECT s.model, lme.metric,
+             ROUND(AVG(lme.score)::numeric, 2)::float AS avg_score
+      FROM llm_metric_evaluations lme
+      JOIN summaries s ON s.id = lme.summary_id
+      GROUP BY s.model, lme.metric
+    `,
+    sql`
+      SELECT s.model, ms.metric,
+             ROUND(AVG(ms.score)::numeric, 2)::float AS avg_score
+      FROM metric_scores ms
+      JOIN summaries s ON s.id = ms.summary_id
+      GROUP BY s.model, ms.metric
+    `,
+  ])
+  return {
+    llm:   llmRows   as { model: string; metric: string; avg_score: number }[],
+    human: humanRows as { model: string; metric: string; avg_score: number }[],
+  }
+}
+
+/**
+ * For each completed rating, check whether the LLM judges (by avg score across
+ * all metrics) preferred the same summary that the human did.
+ */
+export async function getLlmHumanAgreement(): Promise<{
+  total: number
+  agreements: number
+}> {
+  const rows = await sql`
+    WITH llm_avgs AS (
+      SELECT article_id, summary_id, AVG(score) AS avg_score
+      FROM llm_metric_evaluations
+      GROUP BY article_id, summary_id
+    )
+    SELECT
+      COUNT(*)::int                                                          AS total,
+      SUM(CASE WHEN llm_pick.summary_id = r.winner_id THEN 1 ELSE 0 END)::int AS agreements
+    FROM ratings r
+    JOIN LATERAL (
+      SELECT la.summary_id
+      FROM llm_avgs la
+      WHERE la.article_id = r.article_id
+        AND (la.summary_id = r.summary_a_id OR la.summary_id = r.summary_b_id)
+      ORDER BY la.avg_score DESC
+      LIMIT 1
+    ) AS llm_pick ON true
+  `
+  const row = rows[0] as { total: number; agreements: number } | undefined
+  return row ?? { total: 0, agreements: 0 }
+}
+
+/**
+ * Per metric: average LLM score for the human-preferred summary vs the other.
+ * Shows which metrics most separate winners from losers in the LLM's view.
+ */
+export async function getLlmMetricWinnerGap(): Promise<
+  { metric: string; winner_avg: number; loser_avg: number }[]
+> {
+  const rows = await sql`
+    SELECT
+      lme.metric,
+      ROUND(AVG(CASE WHEN lme.summary_id = r.winner_id THEN lme.score END)::numeric, 2)::float
+        AS winner_avg,
+      ROUND(AVG(CASE WHEN lme.summary_id != r.winner_id THEN lme.score END)::numeric, 2)::float
+        AS loser_avg
+    FROM llm_metric_evaluations lme
+    JOIN ratings r
+      ON  r.article_id = lme.article_id
+      AND (r.summary_a_id = lme.summary_id OR r.summary_b_id = lme.summary_id)
+    GROUP BY lme.metric
+    ORDER BY (
+      AVG(CASE WHEN lme.summary_id = r.winner_id  THEN lme.score END) -
+      AVG(CASE WHEN lme.summary_id != r.winner_id THEN lme.score END)
+    ) DESC NULLS LAST
+  `
+  return rows as { metric: string; winner_avg: number; loser_avg: number }[]
+}
+
+/** Win rate per education level per model. */
+export async function getEducationModelPreferences(): Promise<
+  { user_education: string; model: string; wins: number; appearances: number; win_rate_pct: number }[]
+> {
+  const rows = await sql`
+    WITH apps AS (
+      SELECT r.user_education, s.model, COUNT(*) AS total
+      FROM ratings r
+      JOIN summaries s ON s.id = r.summary_a_id OR s.id = r.summary_b_id
+      WHERE r.user_education IS NOT NULL
+      GROUP BY r.user_education, s.model
+    ),
+    wins AS (
+      SELECT r.user_education, s.model, COUNT(*) AS wins
+      FROM ratings r
+      JOIN summaries s ON s.id = r.winner_id
+      WHERE r.user_education IS NOT NULL
+      GROUP BY r.user_education, s.model
+    )
+    SELECT
+      a.user_education,
+      a.model,
+      COALESCE(w.wins, 0)::int                                              AS wins,
+      a.total::int                                                           AS appearances,
+      ROUND(COALESCE(w.wins,0)::numeric / NULLIF(a.total,0) * 100, 1)::float AS win_rate_pct
+    FROM apps a
+    LEFT JOIN wins w USING (user_education, model)
+    ORDER BY a.user_education, win_rate_pct DESC
+  `
+  return rows as {
+    user_education: string; model: string; wins: number
+    appearances: number; win_rate_pct: number
+  }[]
+}
+
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 
 export interface LeaderboardRow {
