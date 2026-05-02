@@ -1,18 +1,17 @@
 import {
   getLeaderboard, getDifficultyAlignment, getModelMetricScores,
-  getLlmHumanAgreement, getLlmMetricWinnerGap, getEducationModelPreferences,
+  getLlmHumanAgreement, getLlmMetricWinnerGap,
 } from '@/lib/db'
 import { MODELS } from '@/lib/groq'
-import { EDUCATION_OPTIONS } from '@/lib/rater-demographics'
 import {
   AgreementRing, DifficultyScatter, MetricGapChart, LlmHumanMetricGrid,
-  ModelWinRateChart, ModelRadar, EducationPrefsChart, PreferredMetricsChart,
+  ModelWinRateChart, ModelRadar, PreferredMetricsChart,
+  MetricSSDChart, RadarAreaRanking,
 } from './charts'
 
 // ── Helpers (server-side only) ────────────────────────────────────────────────
 
 const modelName = (id: string) => MODELS.find(m => m.id === id)?.name ?? id
-const eduLabel  = (v: string)  => EDUCATION_OPTIONS.find(o => o.value === v)?.label ?? v
 const n2        = (v: unknown): number => (v == null ? NaN : Number(v))
 
 function pearson(data: { llm_score: unknown; human_score: unknown }[]): number | null {
@@ -62,10 +61,10 @@ function SectionHeader({ n, title, sub }: { n: string; title: string; sub: strin
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function AnalysisPage() {
-  const [leaderboard, difficultyData, metricScores, llmAgreement, metricGap, educationPrefs] =
+  const [leaderboard, difficultyData, metricScores, llmAgreement, metricGap] =
     await Promise.all([
       getLeaderboard(), getDifficultyAlignment(), getModelMetricScores(),
-      getLlmHumanAgreement(), getLlmMetricWinnerGap(), getEducationModelPreferences(),
+      getLlmHumanAgreement(), getLlmMetricWinnerGap(),
     ])
 
   // ── Difficulty stats ────────────────────────────────────────────────────────
@@ -97,19 +96,26 @@ export default async function AnalysisPage() {
     conciseness:  r.avg_conciseness  != null ? n2(r.avg_conciseness)  : null,
   }))
 
-  // ── Education chart data ────────────────────────────────────────────────────
-  const eduLevels  = Array.from(new Set(educationPrefs.map(r => r.user_education)))
-  const eduModelIds= Array.from(new Set(educationPrefs.map(r => r.model)))
-  const eduModelNames = eduModelIds.map(modelName)
-  const eduMap     = new Map(educationPrefs.map(r => [`${r.user_education}|${r.model}`, n2(r.win_rate_pct)]))
-  const eduChartData = eduLevels.map(edu => {
-    const row: Record<string, string | number | null> = { name: eduLabel(edu) }
-    eduModelIds.forEach(m => {
-      const v = eduMap.get(`${edu}|${m}`)
-      row[modelName(m)] = isNaN(v ?? NaN) ? null : (v ?? null)
+  // ── 1.4 Sum of squared differences per metric (AI judges vs humans) ──────────
+  const METRIC_KEYS = ['accuracy', 'neutrality', 'completeness', 'conciseness'] as const
+  const metricSSD = METRIC_KEYS.map(metric => {
+    const ssd = friendlyModels.reduce((sum, model) => {
+      const ai = n2(friendlyLlm.find(r => r.model === model && r.metric === metric)?.avg_score)
+      const hm = n2(friendlyHuman.find(r => r.model === model && r.metric === metric)?.avg_score)
+      return (!isNaN(ai) && !isNaN(hm)) ? sum + (ai - hm) ** 2 : sum
+    }, 0)
+    return { metric: metric as string, ssd: Math.round(ssd * 1000) / 1000 }
+  }).sort((a, b) => b.ssd - a.ssd)
+
+  // ── 2.2 Radar polygon area per model ────────────────────────────────────────
+  // 4-axis radar, axes 90° apart → area = ½(r1·r2 + r2·r3 + r3·r4 + r4·r1)
+  const radarAreas = radarData
+    .map(r => {
+      const v = [r.accuracy, r.neutrality, r.completeness, r.conciseness].map(x => x ?? 0)
+      const area = 0.5 * v.reduce((sum, val, i) => sum + val * v[(i + 1) % 4], 0)
+      return { name: r.name, area: Math.round(area * 100) / 100 }
     })
-    return row
-  })
+    .sort((a, b) => b.area - a.area)
 
   // ── Preferred metrics chart data ────────────────────────────────────────────
   const preferredMetrics = (['accuracy', 'neutrality', 'completeness', 'conciseness'] as const).map(m => {
@@ -178,6 +184,12 @@ export default async function AnalysisPage() {
             title="Do AI judges and humans agree on model quality?"
             sub="Average score per model per metric — AI judges (indigo) vs human raters (green). One chart per metric." />
           <LlmHumanMetricGrid llm={friendlyLlm} human={friendlyHuman} models={friendlyModels} />
+          <div className="mt-5">
+            <Card title="Sum of squared differences per metric"
+              sub="Σ(AI avg − human avg)² across all models. Lower = better agreement.">
+              <MetricSSDChart data={metricSSD} />
+            </Card>
+          </div>
         </div>
       </section>
 
@@ -205,21 +217,17 @@ export default async function AnalysisPage() {
           <Card title="Metric radar — all models">
             <ModelRadar data={radarData} />
           </Card>
+          <div className="mt-5">
+            <Card title="Radar polygon area by model"
+              sub="½(r₁·r₂ + r₂·r₃ + r₃·r₄ + r₄·r₁) — larger area = more holistic performance across all four metrics.">
+              <RadarAreaRanking data={radarAreas} />
+            </Card>
+          </div>
         </div>
 
-        {/* 2.3 Education preferences */}
+        {/* 2.3 What makes a good summarizer */}
         <div>
           <SectionHeader n="2.3"
-            title="Does education affect model preference?"
-            sub="Win rate per education level per model." />
-          <Card title="Win rate by education level">
-            <EducationPrefsChart chartData={eduChartData} models={eduModelNames} />
-          </Card>
-        </div>
-
-        {/* 2.4 What makes a good summarizer */}
-        <div>
-          <SectionHeader n="2.4"
             title="What makes a good summarizer?"
             sub="Average human score per metric for preferred (winning) summaries — ranked highest to lowest." />
           <Card title="Metric scores of preferred summaries" sub="Averaged across all models and ratings">

@@ -254,3 +254,72 @@ export function PreferredMetricsChart({ data }: {
     </ResponsiveContainer>
   )
 }
+
+// ── Metric SSD (AI vs human sum-of-squared-differences) ──────────────────────
+
+export function MetricSSDChart({ data }: {
+  data: { metric: string; ssd: number }[]
+}) {
+  if (!data.length) return <Empty />
+  const maxSSD = data[0].metric
+  const minSSD = data[data.length - 1].metric
+  const rows = data.map(d => ({ name: cap(d.metric), SSD: d.ssd }))
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-3 flex-wrap">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700">
+          Highest disagreement: {cap(maxSSD)}
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+          Best agreement: {cap(minSSD)}
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 60, left: 110, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+          <XAxis type="number" tick={{ fontSize: 11 }} />
+          <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={108} />
+          <Tooltip contentStyle={TT} formatter={(v: unknown) => [(v as number)?.toFixed(3), 'SSD']} />
+          <Bar dataKey="SSD" radius={[0, 5, 5, 0]} barSize={22}
+            label={{ position: 'right', formatter: (v: unknown) => (v as number)?.toFixed(3), fontSize: 11, fill: '#64748b' }}>
+            {rows.map((r, i) => (
+              <Cell key={i} fill={
+                r.name === cap(maxSSD) ? '#f43f5e' :
+                r.name === cap(minSSD) ? '#10b981' : '#94a3b8'
+              } />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// ── Radar polygon area ranking ────────────────────────────────────────────────
+
+export function RadarAreaRanking({ data }: {
+  data: { name: string; area: number }[]
+}) {
+  if (!data.length) return <Empty />
+  const maxArea = data[0].area
+  return (
+    <div className="space-y-2">
+      {data.map((r, i) => {
+        const pct = maxArea > 0 ? (r.area / maxArea) * 100 : 0
+        return (
+          <div key={r.name} className="flex items-center gap-3">
+            <span className="w-5 text-right text-xs font-bold text-slate-400">#{i + 1}</span>
+            <span className="w-36 shrink-0 text-sm font-medium text-slate-700">{r.name}</span>
+            <div className="flex-1 rounded-full bg-slate-100 h-3 overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{ width: `${pct}%`, backgroundColor: PALETTE[i % PALETTE.length] }}
+              />
+            </div>
+            <span className="w-14 text-right text-xs tabular-nums text-slate-500">{r.area.toFixed(2)}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
